@@ -218,8 +218,6 @@ if __name__ == '__main__':
     colors = cm.spectral(np.linspace(0, 1, len(dbscan.bounding_boxes)))
     if not os.access('plots', os.F_OK):
         os.mkdir('plots')
-    if not os.access('plots/partitions', os.F_OK):
-        os.mkdir('plots/partitions')
     for i, t in enumerate(temp):
         x = [t2[1][0] for t2 in t]
         y = [t2[1][1] for t2 in t]
@@ -232,14 +230,14 @@ if __name__ == '__main__':
         ax = fig.add_subplot(111)
         ax.add_patch(
             patches.Rectangle(box1.lower, *(box1.upper - box1.lower),
-                              alpha=0.4,
-                              color=colors[i]))
-        ax.add_patch(patches.Rectangle(box2.lower, *(box2.upper - box2.lower),
-                                       fill=False))
-        plt.scatter(x, y, c=c)
+                              alpha=0.4, color=colors[i], zorder=0))
+        ax.add_patch(
+            patches.Rectangle(box2.lower, *(box2.upper - box2.lower),
+                              fill=False, zorder=0))
+        plt.scatter(x, y, c=c, zorder=1)
         plt.xlim(-3, 3)
         plt.ylim(-3, 3)
-        plt.savefig('plots/partitions/partion_%i.png' % i)
+        plt.savefig('plots/partition_%i.png' % i)
         plt.close()
     x = X[:, 0]
     y = X[:, 1]
@@ -248,4 +246,15 @@ if __name__ == '__main__':
     plt.xlim(-3, 3)
     plt.ylim(-3, 3)
     plt.savefig('plots/clusters.png')
+    plt.close()
+    fig = plt.figure(figsize=(10, 10))
+    ax = fig.add_subplot(111)
+    for i, b in dbscan.bounding_boxes.iteritems():
+        ax.add_patch(
+            patches.Rectangle(b.lower, *(b.upper - b.lower),
+                              color=colors[i], alpha=0.5, zorder=0))
+    plt.scatter(x, y, c=clusters, zorder=1)
+    plt.xlim(-3, 3)
+    plt.ylim(-3, 3)
+    plt.savefig('plots/clusters_partitions.png')
     plt.close()

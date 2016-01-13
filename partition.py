@@ -166,10 +166,12 @@ if __name__ == '__main__':
     for label, box in kdpart.bounding_boxes.iteritems():
         ax.add_patch(
             patches.Rectangle(box.lower, *(box.upper - box.lower),
-                              alpha=0.5,
-                              color=colors[label]))
-    plt.scatter(x, y, c=partitions)
+                              alpha=0.5, color=colors[label], zorder=0))
+    plt.scatter(x, y, c=partitions, zorder=1)
     if not os.access('plots', os.F_OK):
         os.mkdir('plots')
     plt.savefig('plots/partitioning.png')
+    plt.close()
+    plt.scatter(x, y)
+    plt.savefig('plots/toy_data.png')
     plt.close()
