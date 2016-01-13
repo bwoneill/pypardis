@@ -38,7 +38,8 @@ def map_cluster_id(((key, cluster_id), v), cluster_dict):
     :param cluster_dict: Dictionary of cluster id mappings
     :rtype: (int, int), numpy.ndarray
     :return: (key, cluster label), vector
-    Modifies the item key to include the remapped cluster label, choosing the first id if there are multiple ids
+    Modifies the item key to include the remapped cluster label, choosing the
+    first id if there are multiple ids
     """
     cluster_id = cluster_id.split(',')[0].strip('*')
     if '-1' not in cluster_id and cluster_id in cluster_dict:
@@ -56,23 +57,30 @@ class DBSCAN(object):
     :data: copy of the data used to train the model including
     :result: RDD containing the (key, cluster label) pairs
     :bounding_boxes: dictionary of BoundingBoxes used to partition the data
-    :expanded_boxes: dictionary of BoundingBoxes expanded by 2 eps in all directions, used to partition data
-    :neighbors: dictionary of RDD containing the ((key, cluster label), vector) for data within each partition
-    :cluster_dict: dictionary of mappings for neighborhood cluster ids to global cluster ids
+    :expanded_boxes: dictionary of BoundingBoxes expanded by 2 eps in all
+        directions, used to partition data
+    :neighbors: dictionary of RDD containing the ((key, cluster label), vector)
+        for data within each partition
+    :cluster_dict: dictionary of mappings for neighborhood cluster ids to
+        global cluster ids
     """
 
-    def __init__(self, eps=0.5, min_samples=5, metric=euclidean, max_partitions=None):
+    def __init__(self, eps=0.5, min_samples=5, metric=euclidean,
+                 max_partitions=None):
         """
         :type eps: float
         :param eps: nearest neighbor radius
         :type min_samples: int
         :param min_samples: minimum number of samples within radius eps
         :type metric: callable
-        :param metric: distance metric (should be scipy.spatial.distance.euclidian or scipy.spatial.distance.cityblock)
+        :param metric: distance metric (should be
+            scipy.spatial.distance.euclidian or
+            scipy.spatial.distance.cityblock)
         :type max_partitions: int
         :param max_partitions: maximum number of partitions in KDPartitioner
-        Using a metric other than euclidian or cityblock/Manhattan may not work as the bounding boxes expand in
-        such a way that other metrics may return distances less than eps for points outside the box2.
+        Using a metric other than euclidian or cityblock/Manhattan may not
+        work as the bounding boxes expand in such a way that other metrics may
+        return distances less than eps for points outside the box.
         """
         self.eps = eps
         self.min_samples = int(min_samples)
@@ -102,9 +110,11 @@ class DBSCAN(object):
             .partitionBy(len(parts.partitions)) \
             .map(lambda (p, (k, v)): ((k, p), v))
         # create parameters for sklearn DBSCAN
-        params = {'eps': self.eps, 'min_samples': self.min_samples, 'metric': self.metric}
+        params = {'eps': self.eps, 'min_samples': self.min_samples,
+                  'metric': self.metric}
         # perform dbscan on each part
-        self.data = self.data.mapPartitions(lambda iterable: dbscan_partition(iterable, params))
+        self.data = self.data.mapPartitions(
+            lambda iterable: dbscan_partition(iterable, params))
         self.data.cache()
         self._remap_cluster_ids()
 
@@ -118,15 +128,16 @@ class DBSCAN(object):
 
     def _create_neighborhoods(self):
         """
-        Expands bounding boxes by 2 * eps and creates neighborhoods of items within those boxes with partition
-        ids in key.
+        Expands bounding boxes by 2 * eps and creates neighborhoods of items
+        within those boxes with partition ids in key.
         """
         neighbors = {}
         new_data = self.data.context.emptyRDD()
         for label, box in self.bounding_boxes.iteritems():
             expanded_box = box.expand(2 * self.eps)
             self.expanded_boxes[label] = expanded_box
-            neighbors[label] = self.data.filter(lambda (k, v): expanded_box.contains(v)) \
+            neighbors[label] = self.data.filter(
+                lambda (k, v): expanded_box.contains(v)) \
                 .map(lambda (k, v): ((k, label), v))
             new_data = new_data.union(neighbors[label])
         self.neighbors = neighbors
@@ -134,8 +145,8 @@ class DBSCAN(object):
 
     def _remap_cluster_ids(self):
         """
-        Scans through the data for collisions in cluster ids, creating a mapping from partition level clusters to
-        global clusters
+        Scans through the data for collisions in cluster ids, creating a
+        mapping from partition level clusters to global clusters
         """
         point_labels = self.data.map(lambda ((k, c), v): (k, c)).groupByKey() \
             .map(lambda (k, c): (k, list(c))).collect()
@@ -145,13 +156,17 @@ class DBSCAN(object):
             with open('dbscan.log', 'w') as f:
                 f.write('key,clusters')
                 for key, cluster_ids in point_labels:
-                    f.write('\n%i,%s' % (key, ';'.join(np.array(list(cluster_ids)).astype(str))))
+                    f.write('\n%i,%s' % (
+                        key,
+                        ';'.join(np.array(list(cluster_ids)).astype(str))))
         for k, cluster_ids in point_labels:
             cluster_ids = np.array(list(cluster_ids))
-            in_dict = np.array([cluster_id in cluster_dict for cluster_id in cluster_ids])
+            in_dict = np.array(
+                [cluster_id in cluster_dict for cluster_id in cluster_ids])
             if np.any(in_dict):
                 # find lowest label for labeled clusters
-                labels = [cluster_dict[cluster_id] if cluster_id in cluster_dict else new_cluster_label
+                labels = [cluster_dict[cluster_id]
+                          if cluster_id in cluster_dict else new_cluster_label
                           for cluster_id in cluster_ids]
                 label = np.min(labels)
                 for key, value in cluster_dict.iteritems():
@@ -167,7 +182,8 @@ class DBSCAN(object):
                     # map that id onto the label
                     cluster_dict[cluster_id] = label
         self.cluster_dict = cluster_dict
-        self.result = self.data.map(lambda x: map_cluster_id(x, cluster_dict)) \
+        self.result = self.data \
+            .map(lambda x: map_cluster_id(x, cluster_dict)) \
             .map(lambda ((k, c), v): (k, c)).reduceByKey(min).sortByKey()
         self.result.cache()
 
@@ -184,7 +200,8 @@ if __name__ == '__main__':
     import os
 
     centers = [[1, 1], [-1, -1], [1, -1]]
-    X, labels_true = make_blobs(n_samples=750, centers=centers, cluster_std=0.4,
+    X, labels_true = make_blobs(n_samples=750, centers=centers,
+                                cluster_std=0.4,
                                 random_state=0)
 
     X = StandardScaler().fit_transform(X)
@@ -201,7 +218,7 @@ if __name__ == '__main__':
     colors = cm.spectral(np.linspace(0, 1, len(dbscan.bounding_boxes)))
     if not os.access('plots', os.F_OK):
         os.mkdir('plots')
-    if not os.access('plots/partitions'):
+    if not os.access('plots/partitions', os.F_OK):
         os.mkdir('plots/partitions')
     for i, t in enumerate(temp):
         x = [t2[1][0] for t2 in t]
@@ -213,8 +230,12 @@ if __name__ == '__main__':
         in_box = [box2.contains([a, b]) for a, b in izip(x, y)]
         fig = plt.figure(figsize=(10, 10))
         ax = fig.add_subplot(111)
-        ax.add_patch(patches.Rectangle(box1.lower, *(box1.upper - box1.lower), alpha=0.4, color=colors[i]))
-        ax.add_patch(patches.Rectangle(box2.lower, *(box2.upper - box2.lower), fill=False))
+        ax.add_patch(
+            patches.Rectangle(box1.lower, *(box1.upper - box1.lower),
+                              alpha=0.4,
+                              color=colors[i]))
+        ax.add_patch(patches.Rectangle(box2.lower, *(box2.upper - box2.lower),
+                                       fill=False))
         plt.scatter(x, y, c=c)
         plt.xlim(-3, 3)
         plt.ylim(-3, 3)

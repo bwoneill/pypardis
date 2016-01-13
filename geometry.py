@@ -7,6 +7,7 @@ class BoundingBox(object):
     :lower: lower bounds of bounding box
     :upper: upper bounds of bounding box
     """
+
     def __init__(self, lower=None, upper=None, k=None):
         """
         :type lower: numpy.ndarray
@@ -57,9 +58,11 @@ class BoundingBox(object):
         :rtype: BoundingBox, BoundingBox
         :return: result of split
         """
-        left = BoundingBox(lower=np.copy(self.lower), upper=np.copy(self.upper))
+        left = BoundingBox(lower=np.copy(self.lower),
+                           upper=np.copy(self.upper))
         left.upper[dim] = value
-        right = BoundingBox(lower=np.copy(self.lower), upper=np.copy(self.upper))
+        right = BoundingBox(lower=np.copy(self.lower),
+                            upper=np.copy(self.upper))
         right.lower[dim] = value
         return left, right
 
@@ -76,7 +79,8 @@ class BoundingBox(object):
             return BoundingBox(self.lower - eps, self.upper + eps)
         elif how == 'multiply':
             span = self.upper - self.lower
-            return BoundingBox(self.lower - eps * span, self.upper + eps * span)
+            return BoundingBox(self.lower - eps * span,
+                               self.upper + eps * span)
         else:
             return None
 
@@ -85,9 +89,10 @@ class BoundingBox(object):
         :type vector: numpy.ndarray
         :param vector: k-dim vector like
         :rtype: bool
-        :return: True if vector is with the bounding box (lower bound is inclusive, upper is exclusive)
+        :return: True if vector is with the bounding box (inclusively)
         """
         return np.all(self.lower <= vector) and np.all(self.upper >= vector)
 
     def __repr__(self):
-        return 'BoundingBox(lower=%s\n\tupper=%s)' % (str(self.lower), str(self.upper))
+        return 'BoundingBox(lower=%s\n\tupper=%s)' % (
+            str(self.lower), str(self.upper))

@@ -13,14 +13,18 @@ def split_partition(partition, axis, next_part):
     :param axis: axis to split on
     :type next_part: int
     :param next_part: next partition label
-    :return: part1, part2, median: part1 and part2 are RDDs with the same structure as partition, median is the
+    :return: part1, part2, median: part1 and part2 are RDDs with the same
+        structure as partition, median is the
     :rtype: pyspark.RDD, pyspark.RDD, float
     Split the given partition into equal sized partitions along the given axis.
     """
-    sorted_values = partition.map(lambda ((k, p), v): v[axis]).sortBy(lambda v: v).collect()
-    median = sorted_values[len(sorted_values) / 2]  # need a better way to find the median
+    sorted_values = partition.map(lambda ((k, p), v): v[axis]).sortBy(
+        lambda v: v).collect()
+    median = sorted_values[
+        len(sorted_values) / 2]  # need a better way to find the median
     part1 = partition.filter(lambda ((k, p), v): v[axis] < median)
-    part2 = partition.filter(lambda ((k, p), v): v[axis] >= median).map(lambda ((k, p), v): ((k, next_part), v))
+    part2 = partition.filter(lambda ((k, p), v): v[axis] >= median).map(
+        lambda ((k, p), v): ((k, next_part), v))
     return part1, part2, median
 
 
@@ -34,10 +38,12 @@ def min_var_split(partition, k, next_label):
     :param next_label: next partition label
     :rtype: (pyspark.RDD, pyspark.RDD, float), int
     :return: (part1, part2, median), axis
-    Split the given partition into equal sized partitions along the axis with greatest variance.
+    Split the given partition into equal sized partitions along the axis with
+        greatest variance.
     """
     moments = partition.aggregate(np.zeros((3, k)),
-                                  lambda x, (keys, vector): x + np.array([np.ones(k), vector, vector ** 2]),
+                                  lambda x, (keys, vector): x + np.array(
+                                      [np.ones(k), vector, vector ** 2]),
                                   add)
     var = moments[2] / moments[0] - (moments[1] / moments[0]) ** 2
     axis = np.argmax(var)
@@ -46,7 +52,8 @@ def min_var_split(partition, k, next_label):
 
 class KDPartitioner(object):
     """
-    :partitions: dictionary of int => RDD containing the initial data filtered by the corresponding BoundingBox
+    :partitions: dictionary of int => RDD containing the initial data filtered
+        by the corresponding BoundingBox
     :bounding_boxes: dictionary of int => BoundingBox for that partition label
     :result: union of the RDD in partitions
     :k: dimensionality of the data
@@ -54,7 +61,8 @@ class KDPartitioner(object):
     :split_method: string representing the method for splitting partitions
     """
 
-    def __init__(self, data, max_partitions=None, k=None, split_method='min_var'):
+    def __init__(self, data, max_partitions=None, k=None,
+                 split_method='min_var'):
         """
         :type data: pyspark.RDD
         :param data: pyspark RDD (key, k-dim vector like)
@@ -63,15 +71,19 @@ class KDPartitioner(object):
         :type k: int
         :param k: dimensionality of the data
         :type split_method: str
-        :param split_method: method for splitting on axis - 'min_var' minimizes the variance in each partition, 'rotation' cycles through the axis
-        Split a given data set into approximately equal sized partition (if max_partitions
-        is a power of 2 ** k) using binary tree methods
+        :param split_method: method for splitting on axis - 'min_var' minimizes
+            the variance in each partition, 'rotation' cycles through the axis
+        Split a given data set into approximately equal sized partition (if
+        max_partitions is a power of 2 ** k) using binary tree methods
         """
-        self.split_method = split_method if split_method in ['min_var', 'rotation'] else 'min_var'
+        self.split_method = split_method \
+            if split_method in ['min_var', 'rotation'] else 'min_var'
         self.k = int(k) if k is not None else len(data.first()[1])
-        self.max_partitions = int(max_partitions) if max_partitions is not None else 4 ** self.k
+        self.max_partitions = int(
+            max_partitions) if max_partitions is not None else 4 ** self.k
         data.cache()
-        box = data.aggregate(BoundingBox(k=self.k), lambda total, (_, v): total.union(BoundingBox(v)),
+        box = data.aggregate(BoundingBox(k=self.k),
+                             lambda total, (_, v): total.union(BoundingBox(v)),
                              lambda total, v: total.union(v))
         first_partition = data.map(lambda (key, value): ((key, 0), value))
         self._create_partitions(first_partition, box)
@@ -102,9 +114,12 @@ class KDPartitioner(object):
                 current_partition = self.partitions[current_label]
                 current_box = self.bounding_boxes[current_label]
                 if self.split_method == 'min_var':
-                    (part1, part2, median), current_axis = min_var_split(current_partition, self.k, next_label)
+                    (part1, part2, median), current_axis = min_var_split(
+                        current_partition, self.k, next_label)
                 else:
-                    part1, part2, median = split_partition(current_partition, current_axis, next_label)
+                    part1, part2, median = split_partition(current_partition,
+                                                           current_axis,
+                                                           next_label)
                 box1, box2 = current_box.split(current_axis, median)
                 self.partitions[current_label] = part1
                 self.partitions[next_label] = part2
@@ -130,7 +145,8 @@ if __name__ == '__main__':
     import os
 
     centers = [[1, 1], [-1, -1], [1, -1]]
-    X, labels_true = make_blobs(n_samples=750, centers=centers, cluster_std=0.4,
+    X, labels_true = make_blobs(n_samples=750, centers=centers,
+                                cluster_std=0.4,
                                 random_state=0)
 
     X = StandardScaler().fit_transform(X)
@@ -148,7 +164,10 @@ if __name__ == '__main__':
     ax = fig.add_subplot(111)
     colors = cm.spectral(np.linspace(0, 1, len(kdpart.bounding_boxes)))
     for label, box in kdpart.bounding_boxes.iteritems():
-        ax.add_patch(patches.Rectangle(box.lower, *(box.upper - box.lower), alpha=0.5, color=colors[label]))
+        ax.add_patch(
+            patches.Rectangle(box.lower, *(box.upper - box.lower),
+                              alpha=0.5,
+                              color=colors[label]))
     plt.scatter(x, y, c=partitions)
     if not os.access('plots', os.F_OK):
         os.mkdir('plots')
