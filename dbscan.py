@@ -38,8 +38,8 @@ def map_cluster_id(((key, cluster_id), v), cluster_dict):
     :param cluster_dict: Dictionary of cluster id mappings
     :rtype: (int, int), numpy.ndarray
     :return: (key, cluster label), vector
-    Modifies the item key to include the remapped cluster label, choosing the
-    first id if there are multiple ids
+    Modifies the item key to include the remapped cluster label,
+        choosing the first id if there are multiple ids
     """
     cluster_id = cluster_id.split(',')[0].strip('*')
     if '-1' not in cluster_id and cluster_id in cluster_dict:
@@ -56,13 +56,14 @@ class DBSCAN(object):
     :max_partitions: maximum number of partitions used by KDPartitioner
     :data: copy of the data used to train the model including
     :result: RDD containing the (key, cluster label) pairs
-    :bounding_boxes: dictionary of BoundingBoxes used to partition the data
-    :expanded_boxes: dictionary of BoundingBoxes expanded by 2 eps in all
-        directions, used to partition data
-    :neighbors: dictionary of RDD containing the ((key, cluster label), vector)
-        for data within each partition
-    :cluster_dict: dictionary of mappings for neighborhood cluster ids to
-        global cluster ids
+    :bounding_boxes: dictionary of BoundingBoxes used to partition the
+        data
+    :expanded_boxes: dictionary of BoundingBoxes expanded by 2 eps in
+        all directions, used to partition data
+    :neighbors: dictionary of RDD containing the ((key, cluster label),
+        vector) for data within each partition
+    :cluster_dict: dictionary of mappings for neighborhood cluster ids
+        to global cluster ids
     """
 
     def __init__(self, eps=0.5, min_samples=5, metric=euclidean,
@@ -77,10 +78,12 @@ class DBSCAN(object):
             scipy.spatial.distance.euclidian or
             scipy.spatial.distance.cityblock)
         :type max_partitions: int
-        :param max_partitions: maximum number of partitions in KDPartitioner
-        Using a metric other than euclidian or cityblock/Manhattan may not
-        work as the bounding boxes expand in such a way that other metrics may
-        return distances less than eps for points outside the box.
+        :param max_partitions: maximum number of partitions in
+            KDPartitioner
+        Using a metric other than euclidian or cityblock/Manhattan may
+            not work as the bounding boxes expand in such a way that
+            other metrics may return distances less than eps for points
+            outside the box.
         """
         self.eps = eps
         self.min_samples = int(min_samples)
@@ -128,8 +131,8 @@ class DBSCAN(object):
 
     def _create_neighborhoods(self):
         """
-        Expands bounding boxes by 2 * eps and creates neighborhoods of items
-        within those boxes with partition ids in key.
+        Expands bounding boxes by 2 * eps and creates neighborhoods of
+            items within those boxes with partition ids in key.
         """
         neighbors = {}
         new_data = self.data.context.emptyRDD()
@@ -145,8 +148,8 @@ class DBSCAN(object):
 
     def _remap_cluster_ids(self):
         """
-        Scans through the data for collisions in cluster ids, creating a
-        mapping from partition level clusters to global clusters
+        Scans through the data for collisions in cluster ids, creating
+            a mapping from partition level clusters to global clusters
         """
         point_labels = self.data.map(lambda ((k, c), v): (k, c)).groupByKey() \
             .map(lambda (k, c): (k, list(c))).collect()

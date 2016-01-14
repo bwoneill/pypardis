@@ -5,18 +5,20 @@ import numpy as np
 import pyspark as ps
 
 
-def split_partition(partition, axis, next_part):
+def simple_split(partition, axis, next_part):
     """
     :type partition: pyspark.RDD
-    :param partition: pyspark RDD ((key, partition label) , k-dim vector like)
+    :param partition: pyspark RDD ((key, partition label) , k-dim
+        vector like)
     :type axis: int
     :param axis: axis to split on
     :type next_part: int
     :param next_part: next partition label
-    :return: part1, part2, median: part1 and part2 are RDDs with the same
-        structure as partition, median is the
+    :return: part1, part2, median: part1 and part2 are RDDs with the
+        same structure as partition, median is the
     :rtype: pyspark.RDD, pyspark.RDD, float
-    Split the given partition into equal sized partitions along the given axis.
+    Split the given partition into equal sized partitions along the
+        given axis.
     """
     sorted_values = partition.map(lambda ((k, p), v): v[axis]).sortBy(
         lambda v: v).collect()
@@ -31,34 +33,38 @@ def split_partition(partition, axis, next_part):
 def min_var_split(partition, k, next_label):
     """
     :type partition: pyspark.RDD
-    :param partition: pyspark RDD ((key, partition label), k-dim vector like)
+    :param partition: pyspark RDD ((key, partition label), k-dim vector
+        like)
     :type k: int
     :param k: dimensionality of the vectors in partition
     :type next_label: int
     :param next_label: next partition label
     :rtype: (pyspark.RDD, pyspark.RDD, float), int
     :return: (part1, part2, median), axis
-    Split the given partition into equal sized partitions along the axis with
-        greatest variance.
+    Split the given partition into equal sized partitions along the
+        axis with greatest variance.
     """
     moments = partition.aggregate(np.zeros((3, k)),
                                   lambda x, (keys, vector): x + np.array(
                                       [np.ones(k), vector, vector ** 2]),
                                   add)
-    var = moments[2] / moments[0] - (moments[1] / moments[0]) ** 2
-    axis = np.argmax(var)
-    return split_partition(partition, axis, next_label), axis
+    means = moments[1] / moments[0]
+    variances = moments[2] / moments[0] - means ** 2
+    axis = np.argmax(variances)
+    return simple_split(partition, axis, next_label), axis
 
 
 class KDPartitioner(object):
     """
-    :partitions: dictionary of int => RDD containing the initial data filtered
-        by the corresponding BoundingBox
-    :bounding_boxes: dictionary of int => BoundingBox for that partition label
+    :partitions: dictionary of int => RDD containing the initial data
+        filtered by the corresponding BoundingBox
+    :bounding_boxes: dictionary of int => BoundingBox for that
+        partition label
     :result: union of the RDD in partitions
     :k: dimensionality of the data
     :max_partitions: maximum number of partitions
-    :split_method: string representing the method for splitting partitions
+    :split_method: string representing the method for splitting
+        partitions
     """
 
     def __init__(self, data, max_partitions=None, k=None,
@@ -67,14 +73,17 @@ class KDPartitioner(object):
         :type data: pyspark.RDD
         :param data: pyspark RDD (key, k-dim vector like)
         :type max_partitions: int
-        :param max_partitions: maximum number of partition to split into
+        :param max_partitions: maximum number of partition to split
+            into
         :type k: int
         :param k: dimensionality of the data
         :type split_method: str
-        :param split_method: method for splitting on axis - 'min_var' minimizes
-            the variance in each partition, 'rotation' cycles through the axis
-        Split a given data set into approximately equal sized partition (if
-        max_partitions is a power of 2 ** k) using binary tree methods
+        :param split_method: method for splitting on axis - 'min_var'
+            minimizes the variance in each partition, 'rotation'
+            cycles through the axis
+        Split a given data set into approximately equal sized partition
+            (if max_partitions is a power of 2 ** k) using binary tree
+            methods
         """
         self.split_method = split_method \
             if split_method in ['min_var', 'rotation'] else 'min_var'
@@ -97,7 +106,8 @@ class KDPartitioner(object):
     def _create_partitions(self, data, box):
         """
         :type data: pyspark.RDD
-        :param data: RDD containing ((key, partition id), k-dim vector like)
+        :param data: RDD containing ((key, partition id), k-dim vector
+            like)
         :type box: BoundingBox
         :param box: BoundingBox for the entire data set
         """
@@ -117,9 +127,9 @@ class KDPartitioner(object):
                     (part1, part2, median), current_axis = min_var_split(
                         current_partition, self.k, next_label)
                 else:
-                    part1, part2, median = split_partition(current_partition,
-                                                           current_axis,
-                                                           next_label)
+                    part1, part2, median = simple_split(current_partition,
+                                                        current_axis,
+                                                        next_label)
                 box1, box2 = current_box.split(current_axis, median)
                 self.partitions[current_label] = part1
                 self.partitions[next_label] = part2
@@ -135,7 +145,7 @@ class KDPartitioner(object):
 
 
 if __name__ == '__main__':
-    # Example of KDPartition
+    # Example of partition.KDPartition
     from sklearn.datasets.samples_generator import make_blobs
     from sklearn.preprocessing import StandardScaler
     import matplotlib.pyplot as plt
