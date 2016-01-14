@@ -5,7 +5,7 @@ import numpy as np
 import pyspark as ps
 
 
-def simple_split(partition, axis, next_part):
+def median_search_split(partition, axis, next_part):
     """
     :type partition: pyspark.RDD
     :param partition: pyspark RDD ((key, partition label) , k-dim
@@ -15,10 +15,10 @@ def simple_split(partition, axis, next_part):
     :type next_part: int
     :param next_part: next partition label
     :return: part1, part2, median: part1 and part2 are RDDs with the
-        same structure as partition, median is the
+        same structure as partition, where the split was made
     :rtype: pyspark.RDD, pyspark.RDD, float
     Split the given partition into equal sized partitions along the
-        given axis.
+    given axis.
     """
     sorted_values = partition.map(lambda ((k, p), v): v[axis]).sortBy(
         lambda v: v).collect()
@@ -28,6 +28,45 @@ def simple_split(partition, axis, next_part):
     part2 = partition.filter(lambda ((k, p), v): v[axis] >= median).map(
         lambda ((k, p), v): ((k, next_part), v))
     return part1, part2, median
+
+
+def mean_var_split(partition, k, axis, next_label, mean, variance):
+    """
+    :type partition: pyspark.RDD
+    :param partition: pyspark RDD ((key, partition label), k-dim vector
+        like)
+    :type k: int
+    :param k: number of dimension in vector data
+    :type axis: int
+    :param axis: axis to perform the split on
+    :type next_label: int
+    :param next_label: next partition label
+    :type mean: float
+    :param mean: mean of the given partition along the given axis
+    :type variance: float
+    :param variance: variance of the given partition along the given
+        axis
+    :return: part1, part2, median: part1 and part2 are RDDs with the
+        same structure as partition, where the split was made
+    :rtype: pyspark.RDD, pyspark.RDD, float
+    Search for the median using the mean and variance and split into
+    approximately equal sized partitions.
+    Checks for boundaries that split the data into the most equal size
+    partitions where the boundaries are at mean + [-0,9, -0.6, -0.3, 0,
+    0.9, 0.6, 0.3] * std dev
+    """
+    std_dev = np.sqrt(variance)
+    bounds = np.array([mean + (i - 3) * 0.3 * std_dev for i in xrange(7)])
+    counts = partition.aggregate(np.zeros(7),
+                                 lambda x, (_, v):
+                                 x + 2 * (v[axis] < bounds) - 1,
+                                 add)
+    counts = np.abs(counts)
+    boundary = bounds[np.argmin(counts)]
+    part1 = partition.filter(lambda (_, v): v[axis] < boundary)
+    part2 = partition.filter(lambda (_, v): v[axis] >= boundary).map(
+        lambda ((key, _), v): ((key, next_label), v))
+    return part1, part2, boundary
 
 
 def min_var_split(partition, k, next_label):
@@ -42,7 +81,7 @@ def min_var_split(partition, k, next_label):
     :rtype: (pyspark.RDD, pyspark.RDD, float), int
     :return: (part1, part2, median), axis
     Split the given partition into equal sized partitions along the
-        axis with greatest variance.
+    axis with greatest variance.
     """
     moments = partition.aggregate(np.zeros((3, k)),
                                   lambda x, (keys, vector): x + np.array(
@@ -51,7 +90,9 @@ def min_var_split(partition, k, next_label):
     means = moments[1] / moments[0]
     variances = moments[2] / moments[0] - means ** 2
     axis = np.argmax(variances)
-    return simple_split(partition, axis, next_label), axis
+    return mean_var_split(partition, k, axis, next_label, means[axis],
+                          variances[axis]), axis
+    # return median_search_split(partition, axis, next_label), axis
 
 
 class KDPartitioner(object):
@@ -82,8 +123,8 @@ class KDPartitioner(object):
             minimizes the variance in each partition, 'rotation'
             cycles through the axis
         Split a given data set into approximately equal sized partition
-            (if max_partitions is a power of 2 ** k) using binary tree
-            methods
+        (if max_partitions is a power of 2 ** k) using binary tree
+        methods
         """
         self.split_method = split_method \
             if split_method in ['min_var', 'rotation'] else 'min_var'
@@ -127,9 +168,10 @@ class KDPartitioner(object):
                     (part1, part2, median), current_axis = min_var_split(
                         current_partition, self.k, next_label)
                 else:
-                    part1, part2, median = simple_split(current_partition,
-                                                        current_axis,
-                                                        next_label)
+                    part1, part2, median = median_search_split(
+                        current_partition,
+                        current_axis,
+                        next_label)
                 box1, box2 = current_box.split(current_axis, median)
                 self.partitions[current_label] = part1
                 self.partitions[next_label] = part2

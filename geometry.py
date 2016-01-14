@@ -8,7 +8,7 @@ class BoundingBox(object):
     :upper: upper bounds of bounding box
     """
 
-    def __init__(self, lower=None, upper=None, k=None):
+    def __init__(self, lower=None, upper=None, k=None, all_space=False):
         """
         :type lower: numpy.ndarray
         :param lower:
@@ -21,8 +21,12 @@ class BoundingBox(object):
             self.lower = np.array(lower)
             self.upper = np.array(upper) if upper is not None else self.lower
         elif k is not None:
-            self.lower = np.full(k, sys.float_info.max)
-            self.upper = np.full(k, sys.float_info.min)
+            if all_space:
+                self.lower = np.full(k, sys.float_info.min)
+                self.upper = np.full(k, sys.float_info.max)
+            else:
+                self.lower = np.full(k, sys.float_info.max)
+                self.upper = np.full(k, sys.float_info.min)
         else:
             self.lower = None
             self.upper = None
