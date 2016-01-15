@@ -32,6 +32,9 @@ Finally, the labeled points are then mapped onto their global cluster IDs.
 For points with multiple labels, only the first label is used.
 With core points, the choice of label with be inconsequential, however non-core points will be randomly assigned to a cluster.
 
+#### Animated example of pyParDis DBSCAN
+![Animated example](plots/median_search_split/dbscan_animated.gif)
+
 ## 3 Usage
 
 ### Examples
