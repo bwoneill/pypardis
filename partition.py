@@ -139,10 +139,7 @@ class KDPartitioner(object):
         self._create_partitions(first_partition, box)
         self.result = data.context.emptyRDD()
         for partition in self.partitions.itervalues():
-            if self.result is None:
-                self.result = partition
-            else:
-                self.result = self.result.union(partition)
+            self.result = self.result.union(partition)
 
     def _create_partitions(self, data, box):
         """
@@ -160,7 +157,7 @@ class KDPartitioner(object):
         self.bounding_boxes = {0: box}
         next_label = 1
         while next_label < self.max_partitions:
-            while not todo_q.empty() and next_label < self.max_partitions:
+            if not todo_q.empty():
                 current_label = todo_q.get()
                 current_partition = self.partitions[current_label]
                 current_box = self.bounding_boxes[current_label]
@@ -180,10 +177,10 @@ class KDPartitioner(object):
                 done_q.put(current_label)
                 done_q.put(next_label)
                 next_label += 1
-            if todo_q.empty():
+            else:
                 todo_q = done_q
                 done_q = Queue()
-            current_axis = (current_axis + 1) % self.k
+                current_axis = (current_axis + 1) % self.k
 
 
 if __name__ == '__main__':

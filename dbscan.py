@@ -36,16 +36,16 @@ def map_cluster_id(((key, cluster_id), v), cluster_dict):
     """
     :type cluster_dict: dict
     :param cluster_dict: Dictionary of cluster id mappings
-    :rtype: (int, int), numpy.ndarray
-    :return: (key, cluster label), vector
+    :rtype: int, int
+    :return: key, cluster label
     Modifies the item key to include the remapped cluster label,
     choosing the first id if there are multiple ids
     """
     cluster_id = cluster_id.split(',')[0].strip('*')
     if '-1' not in cluster_id and cluster_id in cluster_dict:
-        return (key, cluster_dict[cluster_id]), v
+        return key, cluster_dict[cluster_id]
     else:
-        return (key, -1), v
+        return key, -1
 
 
 class DBSCAN(object):
@@ -152,7 +152,7 @@ class DBSCAN(object):
         a mapping from partition level clusters to global clusters
         """
         point_labels = self.data.map(lambda ((k, c), v): (k, c)).groupByKey() \
-            .map(lambda (k, c): (k, list(c))).collect()
+            .map(lambda (k, c): (k, np.array(list(c)))).collect()
         new_cluster_label = 0
         cluster_dict = {}
         if LOGGING:
@@ -187,7 +187,7 @@ class DBSCAN(object):
         self.cluster_dict = cluster_dict
         self.result = self.data \
             .map(lambda x: map_cluster_id(x, cluster_dict)) \
-            .map(lambda ((k, c), v): (k, c)).reduceByKey(min).sortByKey()
+            .reduceByKey(min).sortByKey()
         self.result.cache()
 
 

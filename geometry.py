@@ -85,8 +85,6 @@ class BoundingBox(object):
             span = self.upper - self.lower
             return BoundingBox(self.lower - eps * span,
                                self.upper + eps * span)
-        else:
-            return None
 
     def contains(self, vector):
         """
