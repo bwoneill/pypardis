@@ -1,8 +1,9 @@
 import pyspark as ps
 import sklearn.cluster as skc
 from scipy.spatial.distance import *
-
 from partition import KDPartitioner
+from aggregator import ClusterAggregator
+from operator import add
 
 LOGGING = False
 
@@ -26,22 +27,24 @@ def dbscan_partition(iterable, params):
     model = skc.DBSCAN(**params)
     c = model.fit_predict(x)
     cores = set(model.core_sample_indices_)
-    # yield ((key, cluster_id), v), non-core samples labeled with *
+    # yield (key, cluster_id), non-core samples labeled with *
     for i in xrange(len(c)):
         flag = '' if i in cores else '*'
-        yield ((y[i], '%i:%i%s' % (part, c[i], flag)), x[i])
+        yield (y[i], '%i:%i%s' % (part, c[i], flag))
 
 
-def map_cluster_id(((key, cluster_id), v), cluster_dict):
+def map_cluster_id((key, cluster_id), broadcast_dict):
     """
-    :type cluster_dict: dict
-    :param cluster_dict: Dictionary of cluster id mappings
+    :type broadcast_dict: pyspark.Broadcast
+    :param broadcast_dict: Broadcast variable containing a dictionary
+        of cluster id mappings
     :rtype: int, int
     :return: key, cluster label
     Modifies the item key to include the remapped cluster label,
     choosing the first id if there are multiple ids
     """
-    cluster_id = cluster_id.split(',')[0].strip('*')
+    cluster_id = next(iter(cluster_id)).strip('*')
+    cluster_dict = broadcast_dict.value
     if '-1' not in cluster_id and cluster_id in cluster_dict:
         return key, cluster_dict[cluster_id]
     else:
@@ -104,7 +107,6 @@ class DBSCAN(object):
         """
         parts = KDPartitioner(data, self.max_partitions)
         self.data = data
-        neighbors = {}
         self.bounding_boxes = parts.bounding_boxes
         self.expanded_boxes = {}
         self._create_neighborhoods()
@@ -123,8 +125,8 @@ class DBSCAN(object):
 
     def assignments(self):
         """
-        :rtype: pyspark.RDD
-        :return: (key, cluster_id)
+        :rtype: list
+        :return: list of (key, cluster_id)
         Retrieve the results of the DBSCAN
         """
         return self.result.collect()
@@ -149,45 +151,15 @@ class DBSCAN(object):
     def _remap_cluster_ids(self):
         """
         Scans through the data for collisions in cluster ids, creating
-        a mapping from partition level clusters to global clusters
+        a mapping from partition level clusters to global clusters.
         """
-        point_labels = self.data.map(lambda ((k, c), v): (k, c)).groupByKey() \
-            .map(lambda (k, c): (k, np.array(list(c)))).collect()
-        new_cluster_label = 0
-        cluster_dict = {}
-        if LOGGING:
-            with open('dbscan.log', 'w') as f:
-                f.write('key,clusters')
-                for key, cluster_ids in point_labels:
-                    f.write('\n%i,%s' % (
-                        key,
-                        ';'.join(np.array(list(cluster_ids)).astype(str))))
-        for k, cluster_ids in point_labels:
-            cluster_ids = np.array(list(cluster_ids))
-            in_dict = np.array(
-                [cluster_id in cluster_dict for cluster_id in cluster_ids])
-            if np.any(in_dict):
-                # find lowest label for labeled clusters
-                labels = [cluster_dict[cluster_id]
-                          if cluster_id in cluster_dict else new_cluster_label
-                          for cluster_id in cluster_ids]
-                label = np.min(labels)
-                for key, value in cluster_dict.iteritems():
-                    if value in labels and value != label:
-                        cluster_dict[key] = label
-            else:
-                # create/increment label
-                label = new_cluster_label
-                new_cluster_label += 1
-            for cluster_id in cluster_ids:
-                # for each cluster_id, excluding noise and non-core samples
-                if '-1' not in cluster_id and '*' not in cluster_id:
-                    # map that id onto the label
-                    cluster_dict[cluster_id] = label
-        self.cluster_dict = cluster_dict
-        self.result = self.data \
-            .map(lambda x: map_cluster_id(x, cluster_dict)) \
-            .reduceByKey(min).sortByKey()
+        labeled_points = self.data.groupByKey()
+        labeled_points.cache()
+        mapper = labeled_points.aggregate(ClusterAggregator(), add, add)
+        b_mapper = self.data.context.broadcast(mapper.fwd)
+        self.result = labeled_points \
+            .map(lambda x: map_cluster_id(x, b_mapper)) \
+            .sortByKey()
         self.result.cache()
 
 
@@ -222,10 +194,10 @@ if __name__ == '__main__':
     if not os.access('plots', os.F_OK):
         os.mkdir('plots')
     for i, t in enumerate(temp):
-        x = [t2[1][0] for t2 in t]
-        y = [t2[1][1] for t2 in t]
-        c = [int(t2[0][1].split(':')[1].strip('*')) for t2 in t]
-        l = [int(t2[0][1].split(':')[0]) for t2 in t]
+        x = [X[t2[0]][0] for t2 in t]
+        y = [X[t2[0]][1] for t2 in t]
+        c = [int(t2[1].split(':')[1].strip('*')) for t2 in t]
+        l = [int(t2[1].split(':')[0]) for t2 in t]
         box1 = dbscan.bounding_boxes[l[0]]
         box2 = dbscan.expanded_boxes[l[0]]
         in_box = [box2.contains([a, b]) for a, b in izip(x, y)]
