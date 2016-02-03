@@ -1,4 +1,4 @@
-#!/usr/bash
+#!/bin/bash
 
 rm benchmark.csv
 echo "n_samples,eps,n_partitions,time" > benchmark.csv
