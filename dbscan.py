@@ -11,7 +11,7 @@ LOGGING = False
 def dbscan_partition(iterable, params):
     """
     :type iterable: iter
-    :param iterable: iterator yielding ((key, partition), vector)
+    :param iterable: iterator yielding (partition, (key, vector))
     :type params: dict
     :param params: dictionary containing sklearn DBSCAN parameters
     :rtype: iter
@@ -20,9 +20,9 @@ def dbscan_partition(iterable, params):
     """
     # read iterable into local memory
     data = list(iterable)
-    (key, part), vector = data[0]
-    x = np.array([v for (_, __), v in data])
-    y = np.array([k for (k, _), __ in data])
+    part = data[0][0]
+    x = np.array([v for p, (k, v) in data])
+    y = np.array([k for p, (k, v) in data])
     # perform DBSCAN
     model = skc.DBSCAN(**params)
     c = model.fit_predict(x)
@@ -51,6 +51,21 @@ def map_cluster_id((key, cluster_id), broadcast_dict):
         return key, -1
 
 
+def inflate_events((key, vector), broadcast_dict):
+    """
+    :type key: int
+    :param key: unique identifier for each event
+    :type vector: numpy.ndarray
+    :param vector:
+    :type broadcast_dict: pyspark.Broadcast
+    :param broadcast_dict: Broadcast variable containing bounding boxes
+    :rtype: list
+    :return:
+    """
+    return [(p, (key, vector)) for p, box in broadcast_dict.value.iteritems()
+            if box.contains(vector)]
+
+
 class DBSCAN(object):
     """
     :eps: nearest neighbor radius
@@ -63,8 +78,6 @@ class DBSCAN(object):
         data
     :expanded_boxes: dictionary of BoundingBoxes expanded by 2 eps in
         all directions, used to partition data
-    :neighbors: dictionary of RDD containing the ((key, cluster label),
-        vector) for data within each partition
     :cluster_dict: dictionary of mappings for neighborhood cluster ids
         to global cluster ids
     """
@@ -96,7 +109,6 @@ class DBSCAN(object):
         self.result = None
         self.bounding_boxes = None
         self.expanded_boxes = None
-        self.neighbors = None
         self.cluster_dict = None
 
     def train(self, data):
@@ -111,9 +123,7 @@ class DBSCAN(object):
         self.expanded_boxes = {}
         self._create_neighborhoods()
         # repartition data set on the partition label
-        self.data = self.data.map(lambda ((k, p), v): (p, (k, v))) \
-            .partitionBy(len(parts.partitions)) \
-            .map(lambda (p, (k, v)): ((k, p), v))
+        self.data = self.data.partitionBy(parts.max_partitions)
         # create parameters for sklearn DBSCAN
         params = {'eps': self.eps, 'min_samples': self.min_samples,
                   'metric': self.metric}
@@ -136,17 +146,14 @@ class DBSCAN(object):
         Expands bounding boxes by 2 * eps and creates neighborhoods of
         items within those boxes with partition ids in key.
         """
-        neighbors = {}
-        new_data = self.data.context.emptyRDD()
+        expanded_boxes = {}
         for label, box in self.bounding_boxes.iteritems():
-            expanded_box = box.expand(2 * self.eps)
-            self.expanded_boxes[label] = expanded_box
-            neighbors[label] = self.data.filter(
-                lambda (k, v): expanded_box.contains(v)) \
-                .map(lambda (k, v): ((k, label), v))
-            new_data = new_data.union(neighbors[label])
-        self.neighbors = neighbors
-        self.data = new_data
+            expanded_boxes[label] = box.expand(2 * self.eps)
+        broadcast_var = self.data.context.broadcast(expanded_boxes)
+        self.data = self.data.flatMap(
+            lambda x: inflate_events(x, broadcast_var))
+        self.expanded_boxes = expanded_boxes
+        self.data.cache()
 
     def _remap_cluster_ids(self):
         """

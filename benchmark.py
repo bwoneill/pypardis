@@ -11,7 +11,7 @@ if __name__ == '__main__':
     centers = [[1, 1], [-1, -1], [1, -1]]
     samples = [750, 7500, 75000, 750000, 7500000]
     eps = [0.3, 0.1, 0.03, 0.01, 0.003]
-    n_part = [16, 128, 1024, 8192, 65536]
+    n_part = [16, 128, 128, 128, 128]
     sc = ps.SparkContext()
     X, labels_true = make_blobs(n_samples=samples[i], centers=centers,
                                 cluster_std=0.4,
