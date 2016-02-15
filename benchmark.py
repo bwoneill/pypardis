@@ -25,5 +25,5 @@ if __name__ == '__main__':
     dbscan.train(test_data)
     result = np.array(dbscan.assignments())
     run_time = time() - start
-    with open('benchmark.csv', 'w') as f:
+    with open('benchmark.csv', 'a+') as f:
         f.write('\n%i,%f,%i,%i' % (samples[i], eps[i], n_part[i], run_time))
