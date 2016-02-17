@@ -80,10 +80,11 @@ class DBSCAN(object):
         all directions, used to partition data
     :cluster_dict: dictionary of mappings for neighborhood cluster ids
         to global cluster ids
+    :persist: Spark persistence/storage level
     """
 
     def __init__(self, eps=0.5, min_samples=5, metric=euclidean,
-                 max_partitions=None):
+                 max_partitions=None, persist=None):
         """
         :type eps: float
         :param eps: nearest neighbor radius
@@ -110,6 +111,7 @@ class DBSCAN(object):
         self.bounding_boxes = None
         self.expanded_boxes = None
         self.cluster_dict = None
+        self.persist = persist
 
     def train(self, data):
         """
@@ -117,7 +119,9 @@ class DBSCAN(object):
         :param data: (key, k-dim vector like)
         Train the model using a (key, vector) RDD
         """
-        parts = KDPartitioner(data, self.max_partitions)
+        parts = KDPartitioner(data, self.max_partitions, persist=self.persist)
+        if self.persist is not None:
+            parts.unpersist()
         self.data = data
         self.bounding_boxes = parts.bounding_boxes
         self.expanded_boxes = {}

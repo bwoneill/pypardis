@@ -3,6 +3,7 @@ from geometry import BoundingBox
 from operator import add
 import numpy as np
 import pyspark as ps
+from pyspark import StorageLevel
 
 
 def map_results((key, vector), broadcast_dict):
@@ -26,9 +27,10 @@ class KDPartitioner(object):
         partition label
     :k: dimensionality of the data
     :max_partitions: maximum number of partitions
+    :persist: Spark persistence/storage level
     """
 
-    def __init__(self, data, max_partitions=None, k=None):
+    def __init__(self, data, max_partitions=None, k=None, persist=None):
         """
         :type data: pyspark.RDD
         :param data: pyspark RDD (key, k-dim vector like)
@@ -37,10 +39,14 @@ class KDPartitioner(object):
             into
         :type k: int
         :param k: dimensionality of the data
+        :type persist: pyspark.StorageLevel
+        :param persist: storage level
         Split a given data set into approximately equal sized partition
         (if max_partitions is a power of 2 ** k) using binary tree
         methods
         """
+        self.partitions = {}
+        self.persist = persist
         self.data = data
         self.result = None
         self.k = int(k) if k is not None else len(data.first()[1])
@@ -59,12 +65,16 @@ class KDPartitioner(object):
         todo_q.put(0)
         done_q = Queue()
         self.bounding_boxes = {0: box}
+        if self.persist is not None:
+            self.partitions[0] = self.data
         next_label = 1
         while next_label < self.max_partitions:
             if not todo_q.empty():
                 current_label = todo_q.get()
-                current_box = self.bounding_boxes[current_label]
-                box1, box2 = self._min_var_split(current_box)
+                box1, box2 = self._min_var_split(current_label)
+                if self.persist is not None:
+                    self._persist_partitions(box1, box2, current_label,
+                                             next_label)
                 self.bounding_boxes[current_label] = box1
                 self.bounding_boxes[next_label] = box2
                 done_q.put(current_label)
@@ -74,17 +84,21 @@ class KDPartitioner(object):
                 todo_q = done_q
                 done_q = Queue()
 
-    def _min_var_split(self, box):
+    def _min_var_split(self, index):
         """
-        :type box: geometry.BoundingBox
-        :param box: bounding box
+        :type index: int
+        :param index: bounding index
         :rtype: BoundingBox, BoundingBox
-        :return: tuple of bounding boxes split from box
+        :return: tuple of bounding boxes split from the bounding box
+            with the given index
         Split the given partition into equal sized partitions along the
         axis with greatest variance.
         """
-        partition = self.data.filter(lambda (_, v): box.contains(v))
-        # partition.cache()
+        box = self.bounding_boxes[index]
+        if self.persist is None:
+            partition = self.data.filter(lambda (_, v): box.contains(v))
+        else:
+            partition = self.partitions[index]
         k = self.k
         moments = partition.aggregate(np.zeros((3, k)),
                                       lambda x, (keys, vector): x + np.array(
@@ -100,10 +114,20 @@ class KDPartitioner(object):
                                      lambda x, (_, v):
                                      x + 2 * (v[axis] < bounds) - 1,
                                      add)
-        # partition.unpersist()
         counts = np.abs(counts)
         boundary = bounds[np.argmin(counts)]
         return box.split(axis, boundary)
+
+    def _persist_partitions(self, box1, box2, current_label, next_label):
+        old_partition = self.partitions[current_label]
+        self.partitions[current_label] = old_partition.filter(
+            lambda (_, v): box1.contains(v))
+        self.partitions[current_label].persist(self.persist)
+        self.partitions[next_label] = old_partition.filter(
+            lambda (_, v): box2.contains(v))
+        self.partitions[next_label].persist(self.persist)
+        old_partition.unpersist()
+        del old_partition
 
     def get_results(self):
         """
@@ -115,6 +139,10 @@ class KDPartitioner(object):
             self.result = self.data.map(
                 lambda x: map_results(x, broadcast_var))
         return self.result
+
+    def unpersist(self):
+        for p in self.partitions.itervalues():
+            p.unpersist()
 
 
 if __name__ == '__main__':

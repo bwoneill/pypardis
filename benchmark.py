@@ -21,7 +21,8 @@ if __name__ == '__main__':
 
     test_data = sc.parallelize(enumerate(X))
     start = time()
-    dbscan = DBSCAN(eps[i], 10, max_partitions=n_part[i])
+    dbscan = DBSCAN(eps[i], 10, max_partitions=n_part[i],
+                    persist=ps.StorageLevel.MEMORY_AND_DISK)
     dbscan.train(test_data)
     result = np.array(dbscan.assignments())
     run_time = time() - start
