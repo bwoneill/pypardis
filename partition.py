@@ -45,6 +45,7 @@ class KDPartitioner(object):
         (if max_partitions is a power of 2 ** k) using binary tree
         methods
         """
+        self.id = randint(0, 9999)
         self.partitions = {}
         self.old_partitions = {}
         self.persist = persist
@@ -54,7 +55,6 @@ class KDPartitioner(object):
         self.max_partitions = int(
             max_partitions) if max_partitions is not None else 4 ** self.k
         self._create_partitions()
-        self.id = randint(0, 9999)
 
     def _create_partitions(self):
         """
