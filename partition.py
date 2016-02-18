@@ -3,7 +3,7 @@ from geometry import BoundingBox
 from operator import add
 import numpy as np
 import pyspark as ps
-from pyspark import StorageLevel
+from random import randint
 
 
 def map_results((key, vector), broadcast_dict):
@@ -46,6 +46,7 @@ class KDPartitioner(object):
         methods
         """
         self.partitions = {}
+        self.old_partitions = {}
         self.persist = persist
         self.data = data
         self.result = None
@@ -53,6 +54,7 @@ class KDPartitioner(object):
         self.max_partitions = int(
             max_partitions) if max_partitions is not None else 4 ** self.k
         self._create_partitions()
+        self.id = randint(0, 9999)
 
     def _create_partitions(self):
         """
@@ -119,15 +121,31 @@ class KDPartitioner(object):
         return box.split(axis, boundary)
 
     def _persist_partitions(self, box1, box2, current_label, next_label):
-        old_partition = self.partitions[current_label]
-        self.partitions[current_label] = old_partition.filter(
-            lambda (_, v): box1.contains(v))
-        self.partitions[current_label].persist(self.persist)
-        self.partitions[next_label] = old_partition.filter(
-            lambda (_, v): box2.contains(v))
-        self.partitions[next_label].persist(self.persist)
-        old_partition.unpersist()
-        del old_partition
+        """
+        :type box1: geometry.BoundingBox
+        :param box1:
+        :type box2: geometry.BoundingBox
+        :param box2:
+        :type current_label: int
+        :param current_label:
+        :type next_label: int
+        :param next_label:
+        """
+        if current_label in self.old_partitions:
+            self.old_partitions[current_label].unpersist()
+            del self.old_partitions[current_label]
+        p = self.partitions[current_label]
+        self.old_partitions[current_label] = p
+        p1 = p.filter(lambda (_, v): box1.contains(v))
+        p1.setName('KDPartitioner-%i-%i-%i' % (self.id, randint(0, 9999),
+                                               current_label))
+        p1.persist(self.persist)
+        self.partitions[current_label] = p1
+        p2 = p.filter(lambda (_, v): box2.contains(v))
+        p2.setName('KDPartitioner-%i-%i-%i' % (self.id, randint(0, 9999),
+                                               next_label))
+        p2.persist(self.persist)
+        self.partitions[next_label] = p2
 
     def get_results(self):
         """
@@ -141,8 +159,15 @@ class KDPartitioner(object):
         return self.result
 
     def unpersist(self):
+        """
+        Unpersist all stored partitions.
+        """
         for p in self.partitions.itervalues():
             p.unpersist()
+            del p
+        for p in self.old_partitions.itervalues():
+            p.unpersist()
+            del p
 
 
 if __name__ == '__main__':
